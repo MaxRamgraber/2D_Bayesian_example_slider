@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta name="2D Gaussian inference" content="a basic example for 2-D Gaussian inference">
+    <title>2D Gaussian inference</title>
+    <script src="https://unpkg.com/mathjs/lib/browser/math.js"></script>
+    
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://unpkg.com/d3-simple-slider"></script>
+  </head>
+  
+  <!-- Create a div where the graph will take place -->
+<div id="my_dataviz">
+  <svg id="click" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+          <g id="pointer" transform="scale(0.5)">
+              <circle cx="0" cy="0" r="20" id="dragcircle" />
+          </g>
+      </defs>
+  </svg>
+  <div class="row align-items-center">
+    <div class="col-sm-2"><p id="value-simple"></p></div>
+    <div class="col-sm"><div id="slider-simple"></div></div>
+  </div>
+  
+</div>
+
+
+
+<!-- Create a div where the graph will take place -->
+
+  <body>
+    <script>
+    
+    // ===================================================
+    // Set up basic viewport options
+    // ===================================================
+    const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+    const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+      
+    var height 	= math.min([vw,vh])*0.95; // 450
+    var width 	= math.min([vw,vh])*0.95;
+    
+    var svg = d3.select("#click") // This selects the div
+      .attr("width", width) // This defines the canvas' width
+      .attr("height", height) // This defines the canvas' height
+    
+    var xrange 			= [-3,3];
+    var yrange 			= [-3,3];
+    
+    var x_limits 		= [-3,3];
+    var y_limits 		= [-3,3];
+
+    // Create some basic 2D random variables
+    
+    var true_state 	= [0,1.5];
+    
+    const sd_obs 		= 0.25
+    var mu_obs 			= [[true_state[0]+Gaussian_sample(0,sd_obs)],[true_state[1]+Gaussian_sample(0,sd_obs)]];
+    var cov_obs 	 	= [[0.25,0],[0,0.25]];
+    
+    var mu 					= [[0],[1.5]];
+    var cov 				= [[0.75,0],[0,0.75]];
+    
+    var sd_forecast = 0;
+
+      window_x 	= [width*0.12,width*0.95];
+      window_y 	= [height*0.02,height*0.89];
+      
+      // Get scaling functions for the x scale and the y_scale
+      const xScale = d3.scaleLinear()
+        .domain([x_limits[0],x_limits[1]])
+        .range(window_x)
+      const xScale_inverse = d3.scaleLinear()
+        .domain(window_x)
+        .range([x_limits[0],x_limits[1]])
+      const yScale = d3.scaleLinear()
+        .domain([y_limits[0],y_limits[1]])
+        .range([window_y[1],window_y[0]])
+        
+        
+      // Simple
+      //var data = [0, 0.005, 0.01, 0.015, 0.02, 0.025];
+			var data = [0., 0.25, 0.5, 0.75, 1.];
+      
+      var sliderSimple = d3
+        .sliderBottom()
+        .min(d3.min(data))
+        .max(d3.max(data))
+        .width((window_x[1]-window_x[0])*0.65)
+        .ticks(5)
+        .default(0.)
+        .tickFormat(d3.format(',.1f'))
+
+        .on('onchange', val => {
+        	sd_forecast = val
+          //d3.select('p#value-simple').text(d3.format('.2%')(val));
+        });
+
+      var gSimple = d3
+        .select('svg')
+        .append('svg')
+        .attr('width', window_x[1]-window_x[0])
+        .attr('height', height/5)
+        .append('g')
+        .attr('transform', 'translate('+width*0.2+','+window_y[0]*2+')');
+        
+
+      gSimple.call(sliderSimple);
+        
+        
+        
+        
+
+      // Draw the x axis
+      svg
+        .append("g")
+        .attr("transform", "translate(0,"+window_y[1].toString()+")")
+        .call(d3.axisBottom(xScale))
+        .style("font-size", (16*width/600).toString()+"px")
+      svg.append("text")             
+          .attr("transform",
+                "translate("+(math.mean(window_x)).toString()+","+(height*0.99).toString()+")")
+          .style("text-anchor", "middle")
+          .text("x coordinate")
+          .style("font-family", "arial")
+          .style("font-size", (16*width/600).toString()+"px")
+          
+      
+      // Draw the y axis
+      svg
+        .append("g")
+        .attr("transform", "translate("+(window_x[0]).toString()+",0)")
+        .attr("id","mainxaxis")
+        .call(d3.axisLeft(yScale))
+        .style("font-size", (16*width/600).toString()+"px");
+        //.call(d3.axisLeft(yScale).tickFormat(""));
+      svg.append("text")             
+          .attr("transform",
+                "translate("+(width*0.02).toString()+","+(math.mean(window_y)).toString()+") rotate(270)")
+          .style("text-anchor", "middle")
+          .text("y coordinate")
+          .style("font-family", "arial")
+          .style("font-size", (16*width/600).toString()+"px")
+
+
+
+
+		svg.append('line')
+    	.style("stroke", "grey")
+    	.style("stroke-width", 3*height/450)
+    	.attr("x1", 0)
+    	.attr("y1", 0)
+    	.attr("x2", 200)
+    	.attr("y2", 200)
+      .attr("opacity", 0.)
+      .attr("id","compromise_line");
+
+    // Plot the background path
+    svg.append("circle")
+      .attr("r", 1.55/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+      .attr("cx", values_to_pixels(0.,'x'))
+      .attr("cy", values_to_pixels(0.,'y'))
+      .attr("fill", "none")
+      .attr("stroke", "#666666")
+      .attr("opacity", 0.75)
+      .attr("stroke-width", 2.5*height/450)
+      .attr("stroke-dasharray", (3*height/450,7*height/450))
+      .attr("id","background");
+      
+    // Plot the prior
+    svg.append("circle")
+      .attr("r", math.sqrt(cov[0][0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+      .attr("cx", values_to_pixels(mu[0][0],'x'))
+      .attr("cy", values_to_pixels(mu[1][0],'y'))
+      .attr("fill", "#fac205")
+      .attr("stroke", "#666666")
+      .attr("opacity", 0.75)
+      .attr("stroke-width", 2.5*height/450)
+      .attr("id","prior");
+
+    // Plot the true state
+    svg.append("circle")
+      .attr("r", 0.1/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+      .attr("cx", values_to_pixels(true_state[0],'x'))
+      .attr("cy", values_to_pixels(true_state[1],'y'))
+      .attr("fill", "#666666")
+      .attr("stroke", "#666666")
+      .attr("opacity", 0.75)
+      .attr("stroke-width", 2.5*height/450)
+      .attr("id","true");
+
+		// Plot the posterior
+		svg.append("circle")
+      .attr("r", math.sqrt(cov[0][0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+      .attr("cx", values_to_pixels(mu[0][0],'x'))
+      .attr("cy", values_to_pixels(mu[1][0],'y'))
+      .attr("fill", "#f43605")
+      .attr("stroke", "#666666")
+      .attr("opacity", 0.)
+      .attr("stroke-width", 2.5*height/450)
+      .attr("id","posterior");
+
+    // Plot the observation
+    svg.append("circle")
+      .attr("r", sd_obs/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+      .attr("cx", values_to_pixels(mu_obs[0][0],'x'))
+      .attr("cy", values_to_pixels(mu_obs[1][0],'y'))
+      .attr("fill", "#0485d1")
+      .attr("stroke", "#666666")
+      .attr("opacity", 0.75)
+      .attr("stroke-width", 2.5*height/450)
+      .attr("id","observation");
+
+
+
+    
+
+    
+  		// Make the contour flow
+      var repeater = setInterval(function() {
+      
+        var delay 	= 0;
+        
+        // ==================================================
+        // Update the true state along an arc
+        
+      	// Update the true states
+        angle 	= math.atan2(true_state[1],true_state[0])
+        line 		= math.add([0.,-0.05,-0.1,-0.15,-0.2,-0.25,-0.3,-0.35,-0.4,-0.45,-0.5],angle)
+        line 		= math.transpose([math.cos(line),math.sin(line)]);
+        line 		= math.multiply(line,1.5);
+        
+        d3.select("#background")
+          .transition()
+          .styleTween("stroke-dashoffset", function() {
+            return d3.interpolate(0, -40);
+          })
+          .duration(500)
+          .ease(d3.easeLinear)
+        
+        // Apply the update in sequence
+        for (let i = 0; i < 10; i++) {
+        
+        	delay = i*50;
+        
+          d3.select("#true")
+            .transition()
+              .duration(50)
+              .delay(delay)
+              .ease(d3.easeLinear)
+            .attr("cx",values_to_pixels(line[i][0],"x"))
+            .attr("cy",values_to_pixels(line[i][1],"y"))
+        }
+        
+        true_state 	= [line[9][0],line[9][1]];
+        
+        // Update the prior covariance
+        cov 	= math.add(cov,[[sd_forecast**2,0],[0,sd_forecast**2]])
+        d3.select("#prior")
+          .transition()
+          	.duration(500)
+            .ease(d3.easeLinear)
+          .attr("r", math.sqrt(cov[0][0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+          .attr("opacity",0.75)
+        
+
+        
+        
+				// ==================================================
+        // Add the observation
+        
+        delay 	= delay + 100
+      
+      	// Draw new noise
+      	mu_obs 	= [
+          [true_state[0]+Gaussian_sample(0,sd_obs)],
+          [true_state[1]+Gaussian_sample(0,sd_obs)]];
+          
+        // Update the observation scatter point
+        setTimeout(function() {
+          d3.select("#observation")
+            .attr("cx", values_to_pixels(mu_obs[0][0],'x'))
+            .attr("cy", values_to_pixels(mu_obs[1][0],'y'))
+            .attr("opacity",0.75)
+            
+        // Convert the posterior to the prior
+        d3.select("#prior")
+          .attr("r", math.sqrt(cov[0][0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+          .attr("cx", values_to_pixels(mu[0][0],'x'))
+          .attr("cy", values_to_pixels(mu[1][0],'y'))
+          .attr("opacity",0.75)
+            
+        d3.select("#compromise_line")
+          .attr("x1", values_to_pixels(mu_obs[0],'x'))
+          .attr("y1", values_to_pixels(mu_obs[1],'y'))
+          .attr("x2", values_to_pixels(mu[0][0],'x'))
+          .attr("y2", values_to_pixels(mu[1][0],'y'))
+          .attr("opacity",0.75)
+            
+            
+        }, delay);
+
+				// ==================================================
+        // Calculate the posterior moments
+        
+        delay += 100
+         
+        // Update the observation scatter point
+        setTimeout(function() {
+        
+          // Calculate posterior mean
+          mu 	= math.subtract(
+            mu,
+            math.multiply(
+              cov,
+              math.inv(math.add(cov,cov_obs)),
+              math.subtract(mu,mu_obs)));
+
+          // Calculate posterior covariance
+          cov = math.subtract(
+            cov,
+            math.multiply(
+              cov,
+              math.inv(math.add(cov,cov_obs)),
+              cov));
+        
+          d3.select("#posterior")
+            .transition()
+              .duration(750)
+              .ease(d3.easeLinear)
+            .attr("r", math.sqrt(cov[0][0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+            .attr("cx", values_to_pixels(mu[0][0],'x'))
+            .attr("cy", values_to_pixels(mu[1][0],'y'))
+            .attr("opacity",0.75)
+            
+        }, delay);
+
+				// ==================================================
+        // Mask old parts
+        
+        delay += 1000
+         
+        // Update the observation scatter point
+        setTimeout(function() {
+        
+          d3.select("#prior")
+            .attr("r", math.sqrt(cov[0][0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0]))
+            .attr("cx", values_to_pixels(mu[0][0],'x'))
+            .attr("cy", values_to_pixels(mu[1][0],'y'))
+            .attr("opacity",0.75)
+            
+          d3.select("#observation")
+            .transition()
+              .duration(100)
+              .ease(d3.easeLinear)
+            .attr("opacity",0.0)
+            
+          d3.select("#compromise_line")
+            .transition()
+              .duration(100)
+              .ease(d3.easeLinear)
+            .attr("opacity",0.0)
+            
+          d3.select("#posterior")
+            .transition()
+              .duration(100)
+              .ease(d3.easeLinear)
+            .attr("opacity",0.0)
+            
+        }, delay);
+
+          
+          
+          
+          
+          
+      }, 2500);
+    
+    
+    
+    
+    
+    
+    
+    // =================================================================
+    // Auxiliary functions
+    // =================================================================
+
+    
+    
+    // helper function to output formatted results.
+    function print(value) {
+      var precision = 14;
+      document.write(math.format(value, precision) + '<br>');
+    }
+    
+    
+    function pixels_to_values(coords,axis) {
+    	axis = (typeof axis === 'undefined') ? 'xy' : axis;
+    	if (axis == 'x') {
+      	res = (coords-window_x[0])/(window_x[1]-window_x[0]) * (xrange[1]-xrange[0]) + xrange[0]
+      } else if (axis == 'y') {
+      	res = (1.-(coords-window_y[0])/(window_y[1]-window_y[0])) * (yrange[1]-yrange[0]) + yrange[0]
+      } else {
+      	res = [(coords[0]-window_x[0])/(window_x[1]-window_x[0]) * (xrange[1]-xrange[0]) + xrange[0],(1.-(coords[1]-window_y[0])/(window_y[1]-window_y[0])) * (yrange[1]-yrange[0]) + yrange[0]]
+      }
+     	return res;
+    }
+
+    function values_to_pixels(values,axis) {
+    	axis = (typeof axis === 'undefined') ? 'xy' : axis;
+    	if (axis == 'x') {
+      	res = (values-xrange[0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0])+window_x[0];
+      } else if (axis == 'y') {
+      	res = (1-(values-yrange[0])/(yrange[1]-yrange[0]))*(window_y[1]-window_y[0])+window_y[0];
+      } else {
+      	res = [(values[0]-xrange[0])/(xrange[1]-xrange[0])*(window_x[1]-window_x[0])+window_x[0],(1-(values[1]-yrange[0])/(yrange[1]-yrange[0]))*(window_y[1]-window_y[0])+window_y[0]];
+      }
+     	return res;
+    }
+
+    function Gaussian_sample(mu,sd) {
+    
+      val 	= mu + sd*math.sqrt(2)*erfinv(2*math.random()-1);
+
+      return val;
+    }
+    
+    function erfinv(x){
+        var z;
+        var a  = 0.147;                                                   
+        var the_sign_of_x;
+        if(0==x) {
+            the_sign_of_x = 0;
+        } else if(x>0){
+            the_sign_of_x = 1;
+        } else {
+            the_sign_of_x = -1;
+        }
+
+        if(0 != x) {
+            var ln_1minus_x_sqrd = Math.log(1-x*x);
+            var ln_1minusxx_by_a = ln_1minus_x_sqrd / a;
+            var ln_1minusxx_by_2 = ln_1minus_x_sqrd / 2;
+            var ln_etc_by2_plus2 = ln_1minusxx_by_2 + (2/(Math.PI * a));
+            var first_sqrt = Math.sqrt((ln_etc_by2_plus2*ln_etc_by2_plus2)-ln_1minusxx_by_a);
+            var second_sqrt = Math.sqrt(first_sqrt - ln_etc_by2_plus2);
+            z = second_sqrt * the_sign_of_x;
+        } else { // x is zero
+            z = 0;
+        }
+      return z;
+    }
+
+    </script>
+  </body>
+
+</html>
