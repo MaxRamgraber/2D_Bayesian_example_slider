@@ -64,6 +64,8 @@
     var cov 				= [[0.75,0],[0,0.75]];
     
     var sd_forecast = 0;
+    
+    var started 		= false;
 
       window_x 	= [width*0.12,width*0.95];
       window_y 	= [height*0.02,height*0.89];
@@ -215,11 +217,14 @@
 
 
 
-    
-
+      svg.on("click", function() {
+      	started = true;
+        })
     
   		// Make the contour flow
       var repeater = setInterval(function() {
+      
+      	if (started == true) {
       
         var delay 	= 0;
         
@@ -373,7 +378,7 @@
 
           
           
-          
+      }
           
           
       }, 2500);
